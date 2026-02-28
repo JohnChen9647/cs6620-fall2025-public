@@ -1,4 +1,4 @@
-name: docker-build-push
+name: Docker Build, Push, and Deploy
 
 on:
   push:
@@ -6,7 +6,7 @@ on:
       - week02
 
 jobs:
-  build-and-push:
+  build:
     runs-on: ubuntu-latest
 
     steps:
@@ -28,7 +28,7 @@ jobs:
           context: .
           push: true
           tags: |
-            johnchen9647/cs6620-app:latest
+            ${{ secrets.DOCKERHUB_USERNAME }}/cs6620-app:latest
           labels: |
             org.opencontainers.image.source=${{ github.event.repository.html_url }}
             org.opencontainers.image.revision=${{ github.sha }}
@@ -36,3 +36,47 @@ jobs:
             build.workflow=${{ github.workflow }}
             build.run_id=${{ github.run_id }}
             build.run_number=${{ github.run_number }}
+
+  deploy:
+    name: Deploy to EC2 via SSM
+    needs: build
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Configure AWS credentials (Learner Lab)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-session-token: ${{ secrets.AWS_SESSION_TOKEN }}
+          aws-region: ${{ secrets.AWS_REGION }}
+
+      - name: Deploy latest image on EC2 (SSM Run Command)
+        env:
+          EC2_INSTANCE_ID: ${{ secrets.EC2_INSTANCE_ID }}
+          AWS_REGION: ${{ secrets.AWS_REGION }}
+          DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
+          GITHUB_RUN_ID: ${{ github.run_id }}
+          GITHUB_SHA: ${{ github.sha }}
+        run: |
+          IMAGE="${DOCKERHUB_USERNAME}/cs6620-app:latest"
+          CONTAINER_NAME="cs6620-app"
+
+          echo "Deploying ${IMAGE} to ${EC2_INSTANCE_ID} in ${AWS_REGION}"
+
+          aws ssm send-command \
+            --region "$AWS_REGION" \
+            --instance-ids "$EC2_INSTANCE_ID" \
+            --document-name "AWS-RunShellScript" \
+            --comment "Automated deployment via GitHub Actions + AWS SSM | image=${IMAGE} | run_id=${GITHUB_RUN_ID} | sha=${GITHUB_SHA}" \
+            --parameters commands="[
+              \"set -e\",
+              \"echo '[SSM] Starting automated deployment...'\",
+              \"echo '[SSM] Image: ${IMAGE}'\",
+              \"echo '[SSM] Run ID: ${GITHUB_RUN_ID} | SHA: ${GITHUB_SHA}'\",
+              \"docker pull ${IMAGE}\",
+              \"docker stop ${CONTAINER_NAME} || true\",
+              \"docker rm ${CONTAINER_NAME} || true\",
+              \"docker run -d --name ${CONTAINER_NAME} --restart unless-stopped -p 80:5000 ${IMAGE}\",
+              \"docker ps --filter name=${CONTAINER_NAME} --format 'NAME={{.Names}} STATUS={{.Status}} CREATED={{.CreatedAt}}'\"
+            ]"

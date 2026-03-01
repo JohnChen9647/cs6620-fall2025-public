@@ -51,32 +51,26 @@ jobs:
           aws-session-token: ${{ secrets.AWS_SESSION_TOKEN }}
           aws-region: ${{ secrets.AWS_REGION }}
 
-      - name: Deploy latest image on EC2 (SSM Run Command)
+      - name: Deploy latest image on EC2 (SSM)
         env:
-          EC2_INSTANCE_ID: ${{ secrets.EC2_INSTANCE_ID }}
           AWS_REGION: ${{ secrets.AWS_REGION }}
+          EC2_INSTANCE_ID: ${{ secrets.EC2_INSTANCE_ID }}
           DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
           GITHUB_RUN_ID: ${{ github.run_id }}
           GITHUB_SHA: ${{ github.sha }}
         run: |
           IMAGE="${DOCKERHUB_USERNAME}/cs6620-app:latest"
           CONTAINER_NAME="cs6620-app"
-
-          echo "Deploying ${IMAGE} to ${EC2_INSTANCE_ID} in ${AWS_REGION}"
+          COMMENT="Auto deploy via GA+SSM run:${GITHUB_RUN_ID}"
 
           aws ssm send-command \
             --region "$AWS_REGION" \
             --instance-ids "$EC2_INSTANCE_ID" \
             --document-name "AWS-RunShellScript" \
-            --comment "Automated deployment via GitHub Actions + AWS SSM | image=${IMAGE} | run_id=${GITHUB_RUN_ID} | sha=${GITHUB_SHA}" \
+            --comment "$COMMENT" \
             --parameters commands="[
-              \"set -e\",
-              \"echo '[SSM] Starting automated deployment...'\",
-              \"echo '[SSM] Image: ${IMAGE}'\",
-              \"echo '[SSM] Run ID: ${GITHUB_RUN_ID} | SHA: ${GITHUB_SHA}'\",
               \"docker pull ${IMAGE}\",
               \"docker stop ${CONTAINER_NAME} || true\",
               \"docker rm ${CONTAINER_NAME} || true\",
-              \"docker run -d --name ${CONTAINER_NAME} --restart unless-stopped -p 80:5000 ${IMAGE}\",
-              \"docker ps --filter name=${CONTAINER_NAME} --format 'NAME={{.Names}} STATUS={{.Status}} CREATED={{.CreatedAt}}'\"
+              \"docker run -d --name ${CONTAINER_NAME} --restart unless-stopped -p 80:5000 ${IMAGE}\"
             ]"

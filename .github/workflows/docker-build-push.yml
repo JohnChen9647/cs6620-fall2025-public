@@ -69,8 +69,35 @@ jobs:
             --document-name "AWS-RunShellScript" \
             --comment "$COMMENT" \
             --parameters commands="[
-              \"docker pull ${IMAGE}\",
-              \"docker stop ${CONTAINER_NAME} || true\",
-              \"docker rm ${CONTAINER_NAME} || true\",
-              \"docker run -d --name ${CONTAINER_NAME} --restart unless-stopped -p 80:5000 ${IMAGE}\"
+              \"set -e\",
+              \"IMAGE=${DOCKERHUB_USERNAME}/cs6620-app:latest\",
+              \"CONTAINER_NAME=cs6620-app\",
+
+              \"# Ensure Docker is installed (Amazon Linux / Ubuntu)\",
+              \"if ! command -v docker >/dev/null 2>&1; then\",
+              \"  if command -v yum >/dev/null 2>&1; then\",
+              \"    sudo yum update -y\",
+              \"    if sudo yum list docker >/dev/null 2>&1; then\",
+              \"      sudo yum install -y docker\",
+              \"    else\",
+              \"      sudo amazon-linux-extras install docker -y || sudo yum install -y docker\",
+              \"    fi\",
+              \"  elif command -v apt-get >/dev/null 2>&1; then\",
+              \"    sudo apt-get update -y\",
+              \"    sudo apt-get install -y docker.io\",
+              \"  else\",
+              \"    echo 'Unsupported OS: cannot auto-install docker' >&2; exit 1\",
+              \"  fi\",
+              \"fi\",
+
+              \"# Start/enable Docker daemon (systemd)\",
+              \"sudo systemctl enable docker || true\",
+              \"sudo systemctl start docker || true\",
+
+              \"# Deploy container\",
+              \"sudo docker pull $IMAGE\",
+              \"sudo docker stop $CONTAINER_NAME || true\",
+              \"sudo docker rm $CONTAINER_NAME || true\",
+              \"sudo docker run -d --name $CONTAINER_NAME --restart unless-stopped -p 80:5000 $IMAGE\"
             ]"
+

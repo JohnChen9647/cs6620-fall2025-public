@@ -5,6 +5,7 @@ from io import StringIO
 from flask import Flask, render_template, request, jsonify, send_from_directory, send_file
 from flask_cors import CORS
 from pydub import AudioSegment
+from datetime import datetime, timezone
 import tempfile
 
 """
@@ -13,6 +14,12 @@ import tempfile
 """
 
 app = Flask(__name__)
+
+# --- CI/CD deployment indicators (Version / deployment_method / timestamp) ---
+APP_VERSION = "2.0"
+DEPLOYMENT_METHOD = "automated"  # deployment_method
+CONTAINER_START_UTC = datetime.now(timezone.utc)  # container start time
+
 CORS(app)
 
 # Global variables for playlist management
@@ -150,6 +157,35 @@ def index():
     Renders the main HTML page for the client-side audio player.
     """
     return render_template('index.html') 
+
+@app.route('/cicd')
+def cicd_page():
+    """
+    A visible page to prove automated deployment ran.
+    Includes Version, deployment method, and timestamp. (Version / deployment_method / timestamp)
+    """
+    now_utc = datetime.now(timezone.utc)
+    return f"""
+    <h1>Hello from Automated CI/CD Pipeline!</h1>
+    <p><strong>Version:</strong> {APP_VERSION} - Automated Deployment</p>
+    <p><strong>Deployed via:</strong> GitHub Actions + AWS SSM</p>
+    <p><strong>Build Date (Container Start UTC):</strong> {CONTAINER_START_UTC.strftime("%Y-%m-%d %H:%M:%S %Z")}</p>
+    <p><strong>Request Time (UTC):</strong> {now_utc.strftime("%Y-%m-%d %H:%M:%S %Z")}</p>
+    <p><strong>Assignment:</strong> Automated EC2 Deployment</p>
+    """
+
+@app.route('/health')
+def health():
+    """
+    Health endpoint for verification. (health check)
+    """
+    return jsonify({
+        "status": "healthy",
+        "version": APP_VERSION,
+        "deployment_method": DEPLOYMENT_METHOD,
+        "container_start_utc": CONTAINER_START_UTC.isoformat(),
+        "timestamp": datetime.now(timezone.utc).isoformat()
+    })
 
 @app.route('/select_directory', methods=['POST'])
 def select_directory():
